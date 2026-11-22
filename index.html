@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El Impostor — Sobres secretos</title>
+<style>
+:root{color-scheme:dark;--bg:#111322;--panel:#1d2138;--panel2:#292f4d;--text:#f6f4ff;--muted:#b8bdd5;--accent:#a78bfa;--good:#54d6a0;--danger:#ff7188}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(ellipse at top,#29234b 0,#111322 60%);color:var(--text);font:16px/1.45 system-ui,Segoe UI,Arial,sans-serif;min-height:100vh}
+main{max-width:760px;margin:auto;padding:28px 16px 48px}
+header{text-align:center;margin-bottom:22px} h1{font-size:clamp(2rem,7vw,3.2rem);margin:0 0 6px} header p{color:var(--muted);margin:0}
+.pill{display:inline-block;padding:5px 11px;border:1px solid #625a91;border-radius:99px;color:#e3d9ff;font-size:.85rem;margin:4px}
+.panel{background:rgba(29,33,56,.94);border:1px solid #3b4164;border-radius:20px;padding:18px;margin:14px 0;box-shadow:0 12px 35px #0003}
+.players{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.envelope{background:linear-gradient(145deg,#303657,#222741);border:1px solid #515a83;border-radius:16px;padding:16px;text-align:center;min-height:175px;display:flex;flex-direction:column;justify-content:space-between;gap:10px}
+.envelope h2{font-size:1.05rem;margin:0}.icon{font-size:2.3rem}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:11px 14px;cursor:pointer;background:var(--accent);color:#17132b}
+button:focus-visible,input:focus-visible{outline:3px solid white;outline-offset:3px}
+button.secondary{background:#3b4265;color:var(--text)}button:disabled{opacity:.5;cursor:not-allowed}
+.secret{background:#15192b;border:1px dashed #777da5;border-radius:12px;padding:12px;margin-top:2px}
+.secret strong{font-size:1.35rem;display:block;margin:5px 0}
+.status{font-size:.82rem;color:var(--muted)}.locked{color:var(--danger);font-weight:700}.open{color:var(--good);font-weight:700}
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+input{min-width:0;flex:1;background:#111528;color:white;border:1px solid #596184;border-radius:11px;padding:12px;font:inherit}
+.small{font-size:.9rem;color:var(--muted)}.hidden{display:none!important}
+#notice{min-height:1.4em;color:var(--good);font-weight:600}
+@media(max-width:480px){.players{grid-template-columns:1fr}.envelope{min-height:155px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="pill">🎤 4 jugadores</div><div class="pill">😈 1 impostor</div>
+  <h1>EL IMPOSTOR</h1>
+  <p>Sobres secretos · Temas aleatorios</p>
+</header>
+
+<section class="panel">
+  <div class="row" style="justify-content:space-between">
+    <h2 style="margin:0">Ronda <span id="round">1</span></h2>
+    <span class="pill">🔐 Sobres privados</span>
+  </div>
+  <p class="small">Pasa el dispositivo al jugador indicado. Que nadie más mire la pantalla. Al abrir un sobre, el secreto se muestra durante 3 segundos y después se bloquea.</p>
+  <div class="players" id="envelopes"></div>
+</section>
+
+<section class="panel">
+  <h2 style="margin-top:0">🔓 Nueva ronda</h2>
+  <p class="small">Introduce el código para desbloquear los sobres y sortear un nuevo tema y un nuevo impostor.</p>
+  <div class="row">
+    <input id="code" type="password" inputmode="numeric" placeholder="Código secreto" aria-label="Código secreto">
+    <button id="next">Desbloquear</button>
+  </div>
+  <p id="notice" role="status"></p>
+</section>
+
+</main>
+<script>
+const players = ["ADRIÁN","MAMI","DAVID","PAPI"];
+// Temas variados; Shakira es la única cantante en la lista.
+const topics = [
+  "Shakira","Pizza","Dinosaurio","Parque acuático","Montaña rusa","Fútbol",
+  "Helado","Tiburón","Castillo","Videojuego","Playa","Astronauta",
+  "Dragón","Hamburguesa","Bicicleta","Cine","Volcán","Perro",
+  "Robot","Pirata","Baloncesto","Chocolate","Avión","Fantasma",
+  "Zoológico","Piano","Supermercado","Detective","Camping","Tornado",
+  "Minecraft","Colegio","Hospital","Circo","Isla desierta","Nieve",
+  "Safari","Tren","Cohete","Tesoro","Sirena","Bosque encantado",
+  "Pizza gigante","Feria","Acampada","Museo","Biblioteca","Piscina",
+  "Monstruo","Ninja","Rey","Princesa","Cueva","Desierto",
+  "Barco","Semáforo","Telescopio","Magia","Carrera de coches","Pastel",
+  "Peluquería","Granja","Estación espacial","Laberinto","Paraguas",
+  "Patinete","Fábrica de chocolate","Puente","Isla tropical","Reloj",
+  "Canguro","Pingüino","Cocodrilo","Camello","Pulpo","Abeja",
+  "Fuego","Arcoíris","Terremoto","Meteorito","Pirámide","Fantástico hotel",
+  "Restaurante","Tienda de juguetes","Parque de dinosaurios","Gimnasio",
+  "Concierto","Teatro","Patinaje","Esquí","Surf","Bolos",
+  "Ajedrez","Cartas","Puzle","Teléfono","Ordenador","Televisión"
+];
+let secret = "";
+let impostor = -1;
+let round = 1;
+let locked = [false,false,false,false];
+let timers = [];
+
+const root = document.getElementById("envelopes");
+const roundEl = document.getElementById("round");
+const notice = document.getElementById("notice");
+
+function drawNewRound(){
+  secret = topics[Math.floor(Math.random()*topics.length)];
+  impostor = Math.floor(Math.random()*players.length);
+  locked = [false,false,false,false];
+  timers.forEach(clearTimeout); timers = [];
+  render();
+}
+function render(){
+  root.innerHTML = "";
+  players.forEach((name,i)=>{
+    const card = document.createElement("article");
+    card.className = "envelope";
+    card.innerHTML = `<div><div class="icon">✉️</div><h2>${name}</h2></div>`;
+    if(locked[i]){
+      card.innerHTML += `<div class="locked">🔒 SOBRE BLOQUEADO</div><div class="status">Ya se ha abierto en esta ronda</div>`;
+    } else {
+      const btn = document.createElement("button");
+      btn.textContent = "🔓 Abrir sobre";
+      btn.addEventListener("click",()=>openEnvelope(i,card));
+      card.appendChild(btn);
+      const hint = document.createElement("div");
+      hint.className = "status";
+      hint.textContent = "No abras el sobre de otro jugador";
+      card.appendChild(hint);
+    }
+    root.appendChild(card);
+  });
+  roundEl.textContent = round;
+}
+function openEnvelope(i,card){
+  if(locked[i]) return;
+  locked[i] = true;
+  const secretText = i === impostor ? "😈 ERES EL IMPOSTOR" : "🎤 " + secret;
+  card.innerHTML = `<div><div class="icon">${i===impostor?"😈":"🤫"}</div><h2>${players[i]}</h2></div>
+    <div class="secret"><span class="status">TU SECRETO</span><strong>${secretText}</strong><span class="status">Se cerrará en 3 segundos…</span></div>`;
+  const timer = setTimeout(()=>{
+    card.innerHTML = `<div><div class="icon">✉️</div><h2>${players[i]}</h2></div>
+      <div class="locked">🔒 SOBRE BLOQUEADO</div><div class="status">Ya se ha abierto en esta ronda</div>`;
+  },3000);
+  timers.push(timer);
+}
+document.getElementById("next").addEventListener("click",()=>{
+  const code = document.getElementById("code").value.trim();
+  if(code !== "285"){notice.textContent = "❌ Código incorrecto."; return;}
+  round++;
+  drawNewRound();
+  document.getElementById("code").value = "";
+  notice.textContent = "✅ ¡Nueva ronda preparada! Los sobres están desbloqueados.";
+});
+drawNewRound();
+</script>
+</body>
+</html>
